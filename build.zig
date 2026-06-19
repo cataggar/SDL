@@ -1496,6 +1496,41 @@ pub fn build(b: *std.Build) void {
     install_sdl_test.dependOn(&install_sdl_test_lib.step);
 
     b.getInstallStep().dependOn(&install_sdl_test_lib.step);
+
+    // --- gosdl3: generate cgo SDL3 Go bindings from the headers ---------------
+    // `zig build gentc` runs translate-c to (re)write gosdl3/cimport.zig (function
+    // signatures with C typedef/enum names preserved). `zig build gensdl3` builds
+    // gosdl3/gen.zig -- which @cImports SDL3 for constants/type-aliases and
+    // @embedFiles cimport.zig to parse function signatures -- runs it, and writes
+    // gosdl3/sdl3/sdl3.go. Run `zig build gentc` first when the SDL3 headers change.
+    const tc = b.addTranslateC(.{
+        .root_source_file = b.path("gosdl3/include_sdl.c"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+        .link_libc = true,
+    });
+    tc.addIncludePath(b.path("include"));
+    const tc_write = b.addUpdateSourceFiles();
+    tc_write.addCopyFileToSource(tc.getOutput(), "gosdl3/cimport.zig");
+    const gentc_step = b.step("gentc", "Regenerate gosdl3/cimport.zig from SDL3 headers (translate-c)");
+    gentc_step.dependOn(&tc_write.step);
+
+    const gensdl3_exe = b.addExecutable(.{
+        .name = "gensdl3",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("gosdl3/gen.zig"),
+            .target = b.graph.host,
+            .optimize = .Debug,
+            .link_libc = true,
+        }),
+    });
+    gensdl3_exe.root_module.addIncludePath(b.path("include"));
+    const gensdl3_run = b.addRunArtifact(gensdl3_exe);
+    const gensdl3_out = gensdl3_run.captureStdOut(.{});
+    const gensdl3_write = b.addUpdateSourceFiles();
+    gensdl3_write.addCopyFileToSource(gensdl3_out, "gosdl3/sdl3/sdl3.go");
+    const gensdl3_step = b.step("gensdl3", "Generate cgo SDL3 Go bindings -> gosdl3/sdl3/sdl3.go");
+    gensdl3_step.dependOn(&gensdl3_write.step);
 }
 
 const LinuxDepsValues = struct {

@@ -59,17 +59,25 @@ pub fn build(b: *std.Build) void {
             lib.root_module.addCMacro("__EMSCRIPTEN_PTHREADS__ ", "1");
             lib.root_module.addCMacro("USE_SDL", "2");
             lib.root_module.addCSourceFiles(.{ .files = &emscripten_src_files });
-            if (b.sysroot == null) {
-                @panic("Pass '--sysroot \"$EMSDK/upstream/emscripten\"'");
-            }
-
-            const cache_include = std.fs.path.join(b.allocator, &.{ b.sysroot.?, "cache", "sysroot", "include" }) catch @panic("Out of memory");
-            defer b.allocator.free(cache_include);
-
-            var dir = std.Io.Dir.openDirAbsolute(b.graph.io, cache_include, .{ .access_sub_paths = true, .follow_symlinks = false }) catch @panic("No emscripten cache. Generate it!");
-            dir.close(b.graph.io);
-
-            lib.root_module.addIncludePath(.{ .cwd_relative = cache_include });
+            const emscripten_root = b.option(
+                std.Build.LazyPath,
+                "emscripten-root",
+                "Path to the initialized Emscripten installation",
+            ) orelse @panic("Pass '-Demscripten-root=$EMSDK/upstream/emscripten'");
+            const cache_include = emscripten_root.path(b, "cache/sysroot/include");
+            const check_cache = b.addExecutable(.{
+                .name = "check-emscripten-cache",
+                .root_module = b.createModule(.{
+                    .root_source_file = b.path("tools/check_emscripten_cache.zig"),
+                    .target = b.graph.host,
+                    .optimize = .safe,
+                }),
+            });
+            const run_check = b.addRunArtifact(check_cache);
+            run_check.addDirectoryArg(cache_include);
+            run_check.has_side_effects = true;
+            lib.step.dependOn(&run_check.step);
+            lib.root_module.addIncludePath(cache_include);
         },
         else => {
             if (t.abi.isAndroid()) {

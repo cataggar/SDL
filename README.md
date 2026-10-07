@@ -9,10 +9,10 @@ This is a port of [SDL](https://libsdl.org/) to the Zig build system, packaged f
 
 ## Usage
 
-Requires Zig 0.15.2 or 0.16.0-dev (master).
+Requires Zig 0.17.0. The package retains wrapper 0.4.2 and SDL 3.4.4.
 
 ```sh
-zig fetch --save git+https://github.com/castholm/SDL.git
+zig fetch --save git+https://github.com/cataggar/SDL#compat/sdl3-3.4-zig017
 ```
 
 ```zig
@@ -25,6 +25,7 @@ const sdl_dep = b.dependency("sdl", .{
     //.pic = null,
     //.lto = null,
     //.emscripten_pthreads = false,
+    //.sdk_sysroot = b.path("path/to/sdk/sysroot"),
 });
 const sdl_lib = sdl_dep.artifact("SDL3");
 const sdl_test_lib = sdl_dep.artifact("SDL3_test");
@@ -90,10 +91,10 @@ Building for `aarch64/x86_64-macos` requires Xcode 14.1 or later to be installed
 > [!NOTE]
 > **Cross-compiling for macOS from Windows or Linux host systems is not supported** because [the Xcode and Apple SDKs Agreement](https://www.apple.com/legal/sla/docs/xcode.pdf) explicitly prohibits using macOS SDK files from non-Apple-branded systems.
 
-When building for non-native macOS targets (for example for x86-64 from an AArch64 Mac), you need to provide a path to the macOS SDK sysroot via `--sysroot`:
+When building for non-native macOS targets (for example for x86-64 from an AArch64 Mac), provide the macOS SDK sysroot to the package's `sdk_sysroot` option as well as the compiler's global `--sysroot`:
 
 ```sh
-zig build -Dtarget=x86_64-macos --sysroot "$(xcrun --sdk macosx --show-sdk-path)"
+zig build -Dtarget=x86_64-macos -Dsdk_sysroot="$(xcrun --sdk macosx --show-sdk-path)" --sysroot "$(xcrun --sdk macosx --show-sdk-path)"
 ```
 
 ### Emscripten (web)
@@ -112,11 +113,17 @@ zig build -Dtarget=x86_64-macos --sysroot "$(xcrun --sdk macosx --show-sdk-path)
 
 Building for `wasm32-emscripten` requires an Emscripten development environment to be set up on the host system. It is strongly recommended that you use [the Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) for installing and managing Emscripten.
 
-When building for Emscripten, you need to provide a path to the Emscripten sysroot via `--sysroot`:
+When building for Emscripten, provide its cached sysroot to the package's `sdk_sysroot` option as well as the compiler's global `--sysroot`:
 
 ```sh
-zig build -Dtarget=wasm32-emscripten --sysroot "$(em-config CACHE)/sysroot"
+zig build -Dtarget=wasm32-emscripten -Dsdk_sysroot="$(em-config CACHE)/sysroot" --sysroot "$(em-config CACHE)/sysroot"
 ```
+
+The package option is a tracked `std.Build.LazyPath`, and dependencies forward
+it as `.sdk_sysroot = path`. Zig 0.17's global `--sysroot` is a make-time input
+and is no longer available during package configuration. Existing explicit
+`system_include_path`, `system_framework_path` and `library_path` options retain
+precedence over values derived from `sdk_sysroot`.
 
 Depending on the state of your Emscripten cache, you might need to run `embuilder build sysroot` to ensure that the Emscripten sysroot is built before you run `zig build`.
 
